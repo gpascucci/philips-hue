@@ -57,6 +57,12 @@ public class HueController {
         return hueBridgeService.getInventory();
     }
 
+    @GetMapping("/diagnostics")
+    public Map<String, Object> diagnostics() {
+        log.debug("GET /api/hue/diagnostics");
+        return hueBridgeService.getDiagnostics();
+    }
+
     @GetMapping("/status")
     public Map<String, String> status() {
         return Map.of("status", "ok");

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { getHueInventory, getHueRooms, renameHueRoom } from './api/hueClient'
+import { getHueDiagnostics, getHueRooms, renameHueRoom } from './api/hueClient'
 import type { HueInventoryRow, HueRoom } from './types/hue'
 import './App.css'
 
@@ -39,7 +39,7 @@ function App() {
 
     try {
       const [inventoryPayload, roomsPayload] = await Promise.all([
-        getHueInventory(),
+        getHueDiagnostics(),
         getHueRooms(),
       ])
       setInventory(inventoryPayload.data || [])
@@ -180,6 +180,8 @@ function App() {
                     <th>Device</th>
                     <th>Light</th>
                     <th>Zigbee</th>
+                    <th>Reachable</th>
+                    <th>Firmware</th>
                     <th>State</th>
                   </tr>
                 </thead>
@@ -190,6 +192,11 @@ function App() {
                       <td>{row.deviceName || row.deviceId}</td>
                       <td>{row.lightName || row.lightRid || 'Unknown light'}</td>
                       <td>{row.zigbeeStatus || 'unknown'}</td>
+                      <td>{row.reachable === null ? 'unknown' : row.reachable ? 'yes' : 'no'}</td>
+                      <td>
+                        {row.swupdateState || 'unknown'}
+                        {row.swupdateLastInstall ? ` (${row.swupdateLastInstall})` : ''}
+                      </td>
                       <td>
                         {row.missingLightResource ? (
                           <span className="badge warn">Missing light resource</span>
@@ -201,7 +208,7 @@ function App() {
                   ))}
                   {filteredRows.length === 0 && (
                     <tr>
-                      <td colSpan={5}>No lights match the selected room.</td>
+                      <td colSpan={7}>No lights match the selected room.</td>
                     </tr>
                   )}
                 </tbody>

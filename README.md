@@ -62,6 +62,7 @@ Backend endpoints used by the frontend:
 - `GET /api/hue/rooms`
 - `GET /api/hue/lights`
 - `GET /api/hue/inventory` (merged device + light + zigbee view for troubleshooting)
+- `GET /api/hue/diagnostics` (inventory plus `reachable` and firmware update fields)
 - `PUT /api/hue/rooms/{roomId}/name` with JSON body `{ "name": "New Room Name" }`
 - `GET /api/hue/ping`
 

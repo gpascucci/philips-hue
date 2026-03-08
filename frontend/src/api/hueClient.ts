@@ -30,6 +30,9 @@ const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
 export const getHueInventory = (): Promise<HueInventoryResponse> =>
   requestJson<HueInventoryResponse>('/api/hue/inventory')
 
+export const getHueDiagnostics = (): Promise<HueInventoryResponse> =>
+  requestJson<HueInventoryResponse>('/api/hue/diagnostics')
+
 export const getHueRooms = (): Promise<HueRoomsResponse> =>
   requestJson<HueRoomsResponse>('/api/hue/rooms')
 

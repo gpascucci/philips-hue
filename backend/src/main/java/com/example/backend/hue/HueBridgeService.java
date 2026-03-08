@@ -62,11 +62,21 @@ public class HueBridgeService {
 
     public Map<String, Object> getInventory() {
         log.info("Building Hue inventory view");
+        return buildInventoryResponse(false);
+    }
+
+    public Map<String, Object> getDiagnostics() {
+        log.info("Building Hue diagnostics view");
+        return buildInventoryResponse(true);
+    }
+
+    private Map<String, Object> buildInventoryResponse(boolean includeDiagnostics) {
         JsonNode devices = fetchResource("device").path("data");
         JsonNode lights = fetchResource("light").path("data");
         JsonNode rooms = fetchResource("room").path("data");
         JsonNode zones = fetchResource("zone").path("data");
         JsonNode connectivityItems = fetchResource("zigbee_connectivity").path("data");
+        JsonNode legacyLights = includeDiagnostics ? fetchLegacyLights() : null;
 
         Map<String, JsonNode> lightsById = new HashMap<>();
         if (lights.isArray()) {
@@ -92,12 +102,15 @@ public class HueBridgeService {
 
         List<Map<String, Object>> rows = new ArrayList<>();
         int missingLightCount = 0;
+        int connectivityIssueCount = 0;
+        int unreachableCount = 0;
         if (devices.isArray()) {
             for (JsonNode device : devices) {
                 String deviceId = device.path("id").asText("");
                 String lightRid = findServiceRid(device, "light");
                 JsonNode linkedLight = lightRid == null ? null : lightsById.get(lightRid);
                 JsonNode connectivity = connectivityByDeviceId.get(deviceId);
+                JsonNode legacyLight = includeDiagnostics ? findLegacyLight(legacyLights, linkedLight) : null;
                 String roomName = firstNonBlank(
                         roomNameByRid.get(deviceId),
                         roomNameByRid.get(lightRid),
@@ -113,6 +126,14 @@ public class HueBridgeService {
                 if (missingLightResource) {
                     missingLightCount++;
                 }
+                String zigbeeStatus = connectivity == null ? null : connectivity.path("status").asText("");
+                if ("connectivity_issue".equals(zigbeeStatus)) {
+                    connectivityIssueCount++;
+                }
+                Boolean reachable = getLegacyReachable(legacyLight);
+                if (reachable != null && !reachable) {
+                    unreachableCount++;
+                }
 
                 Map<String, Object> row = new HashMap<>();
                 row.put("deviceId", deviceId);
@@ -122,7 +143,10 @@ public class HueBridgeService {
                 row.put("lightName", linkedLight == null ? null : linkedLight.path("metadata").path("name").asText(""));
                 row.put("roomId", roomId);
                 row.put("roomName", roomName);
-                row.put("zigbeeStatus", connectivity == null ? null : connectivity.path("status").asText(""));
+                row.put("zigbeeStatus", zigbeeStatus);
+                row.put("reachable", reachable);
+                row.put("swupdateState", getLegacySwUpdateState(legacyLight));
+                row.put("swupdateLastInstall", getLegacySwUpdateLastInstall(legacyLight));
                 row.put("missingLightResource", missingLightResource);
                 rows.add(row);
             }
@@ -132,11 +156,15 @@ public class HueBridgeService {
         summary.put("deviceCount", rows.size());
         summary.put("lightCount", lights.isArray() ? lights.size() : 0);
         summary.put("missingLightResourceCount", missingLightCount);
+        summary.put("connectivityIssueCount", connectivityIssueCount);
+        summary.put("unreachableCount", unreachableCount);
         log.info(
-                "Inventory summary: devices={}, lights={}, missingLightResource={}",
+                "Inventory summary: devices={}, lights={}, missingLightResource={}, connectivityIssue={}, unreachable={}",
                 summary.get("deviceCount"),
                 summary.get("lightCount"),
-                summary.get("missingLightResourceCount")
+                summary.get("missingLightResourceCount"),
+                summary.get("connectivityIssueCount"),
+                summary.get("unreachableCount")
         );
 
         Map<String, Object> response = new HashMap<>();
@@ -170,6 +198,56 @@ public class HueBridgeService {
                 .header("hue-application-key", apiKey)
                 .retrieve()
                 .body(JsonNode.class);
+    }
+
+    private JsonNode fetchLegacyLights() {
+        String baseUrl = requireValue(hueProperties.baseUrl(), "hue.base-url");
+        String apiKey = requireValue(hueProperties.apiKey(), "hue.api-key");
+        String url = baseUrl.replaceAll("/+$", "") + "/api/" + apiKey + "/lights";
+        log.debug("Fetching Hue v1 lights from {}", url);
+
+        return restClient.get()
+                .uri(url)
+                .header(HttpHeaders.ACCEPT, "application/json")
+                .retrieve()
+                .body(JsonNode.class);
+    }
+
+    private JsonNode findLegacyLight(JsonNode legacyLights, JsonNode linkedLight) {
+        if (legacyLights == null || linkedLight == null) {
+            return null;
+        }
+        String idV1 = linkedLight.path("id_v1").asText("");
+        if (!idV1.startsWith("/lights/")) {
+            return null;
+        }
+        String legacyId = idV1.substring("/lights/".length());
+        JsonNode light = legacyLights.path(legacyId);
+        return light.isMissingNode() ? null : light;
+    }
+
+    private Boolean getLegacyReachable(JsonNode legacyLight) {
+        if (legacyLight == null) {
+            return null;
+        }
+        JsonNode reachable = legacyLight.path("state").path("reachable");
+        return reachable.isBoolean() ? reachable.booleanValue() : null;
+    }
+
+    private String getLegacySwUpdateState(JsonNode legacyLight) {
+        if (legacyLight == null) {
+            return null;
+        }
+        String value = legacyLight.path("swupdate").path("state").asText("");
+        return value.isBlank() ? null : value;
+    }
+
+    private String getLegacySwUpdateLastInstall(JsonNode legacyLight) {
+        if (legacyLight == null) {
+            return null;
+        }
+        String value = legacyLight.path("swupdate").path("lastinstall").asText("");
+        return value.isBlank() ? null : value;
     }
 
     private String findServiceRid(JsonNode device, String rtype) {

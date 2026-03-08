@@ -6,6 +6,9 @@ export type HueInventoryRow = {
   roomId: string | null
   roomName: string | null
   zigbeeStatus: string | null
+  reachable: boolean | null
+  swupdateState: string | null
+  swupdateLastInstall: string | null
   missingLightResource: boolean
 }
 
