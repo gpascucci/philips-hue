@@ -18,6 +18,7 @@ coverage
 *.local
 .env
 .env.*
+*.tsbuildinfo
 .env.local
 .env.development.local
 .env.test.local

@@ -2,13 +2,35 @@
 
 This repository contains a split frontend/backend setup:
 
-- `frontend/`: React app built with Vite
+- `frontend/`: React + TypeScript app built with Vite
 - `backend/`: Spring Boot REST API (Maven), including Hue Bridge proxy endpoints
 
 ## Prerequisites
 
 - Node.js 20+
 - Java 21+
+
+## Find Your Hue Bridge IP
+
+Use one of these:
+
+- Router DHCP client list (look for Philips Hue Bridge)
+- Hue mobile app: `Settings -> My Hue system -> (i) Bridge details`
+
+If you already know it, use that IP directly in config.
+
+## Generate a Hue API Key
+
+1. Press the physical button on top of the Hue Bridge.
+2. Within about 30 seconds, run:
+
+```bash
+curl -k -X POST https://<bridge-ip>/api \
+  -H "Content-Type: application/json" \
+  -d '{"devicetype":"philips-hue-app#local-dev"}'
+```
+
+3. Copy `success.username` from the response. That is your API key.
 
 ## Hue Bridge configuration
 
@@ -61,6 +83,21 @@ npm run dev
 ```
 
 Frontend runs on `http://localhost:5173` and calls the backend endpoint.
+
+Optional checks:
+
+```bash
+cd frontend
+npm run typecheck
+npm run lint
+```
+
+## Local Startup Order
+
+1. Create `backend/application-secrets.properties` with your bridge IP + API key.
+2. Start backend (`./mvnw spring-boot:run`).
+3. Start frontend (`npm run dev`).
+4. Open `http://localhost:5173`.
 
 ## Optional frontend API base URL
 

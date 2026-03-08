@@ -1,66 +1,70 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { getHueInventory, getHueRooms, renameHueRoom } from './api/hueClient'
+import type { HueInventoryRow, HueRoom } from './types/hue'
 import './App.css'
 
+type RoomOption = {
+  id: string
+  name: string
+}
+
+type SortField = 'lightName' | 'deviceName' | 'roomName' | 'zigbeeStatus'
+
+const SORT_OPTIONS: { value: SortField; label: string }[] = [
+  { value: 'lightName', label: 'Light name' },
+  { value: 'deviceName', label: 'Device name' },
+  { value: 'roomName', label: 'Room name' },
+  { value: 'zigbeeStatus', label: 'Zigbee status' },
+]
+
+const getRoomName = (room: HueRoom): string => room.metadata?.name || room.id
+
 function App() {
-  const [inventory, setInventory] = useState([])
-  const [rooms, setRooms] = useState([])
-  const [selectedRoom, setSelectedRoom] = useState('all')
-  const [sortBy, setSortBy] = useState('lightName')
-  const [roomToRename, setRoomToRename] = useState('')
-  const [newRoomName, setNewRoomName] = useState('')
-  const [saveMessage, setSaveMessage] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [inventory, setInventory] = useState<HueInventoryRow[]>([])
+  const [rooms, setRooms] = useState<HueRoom[]>([])
+  const [selectedRoom, setSelectedRoom] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<SortField>('lightName')
+  const [roomToRename, setRoomToRename] = useState<string>('')
+  const [newRoomName, setNewRoomName] = useState<string>('')
+  const [saveMessage, setSaveMessage] = useState<string>('')
+  const [saving, setSaving] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string>('')
 
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
-
-  const loadData = (showLoading = false) => {
+  const loadData = useCallback(async (showLoading = false): Promise<void> => {
     if (showLoading) {
       setLoading(true)
     }
     setError('')
 
-    return Promise.all([
-      fetch(`${apiBaseUrl}/api/hue/inventory`),
-      fetch(`${apiBaseUrl}/api/hue/rooms`),
-    ])
-      .then(async ([inventoryResponse, roomsResponse]) => {
-        const [inventoryPayload, roomsPayload] = await Promise.all([
-          inventoryResponse.json(),
-          roomsResponse.json(),
-        ])
-        if (!inventoryResponse.ok) {
-          throw new Error(inventoryPayload.error || `HTTP ${inventoryResponse.status}`)
-        }
-        if (!roomsResponse.ok) {
-          throw new Error(roomsPayload.error || `HTTP ${roomsResponse.status}`)
-        }
-        setInventory(inventoryPayload.data || [])
-        setRooms(roomsPayload.data || [])
-      })
-      .catch((requestError) => {
-        setError(`Could not load Hue data: ${requestError.message}`)
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }
+    try {
+      const [inventoryPayload, roomsPayload] = await Promise.all([
+        getHueInventory(),
+        getHueRooms(),
+      ])
+      setInventory(inventoryPayload.data || [])
+      setRooms(roomsPayload.data || [])
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Unknown error'
+      setError(`Could not load Hue data: ${message}`)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    loadData(true)
-  }, [])
+    void loadData(true)
+  }, [loadData])
 
   const lightRows = useMemo(() => inventory.filter((row) => row.lightRid), [inventory])
 
-  const roomCatalog = useMemo(() => {
-    const rows = rooms
-      .map((room) => ({ id: room.id, name: room?.metadata?.name || room.id }))
+  const roomCatalog = useMemo<RoomOption[]>(() => {
+    return rooms
+      .map((room) => ({ id: room.id, name: getRoomName(room) }))
       .sort((a, b) => a.name.localeCompare(b.name))
-    return rows
   }, [rooms])
 
-  const filterOptions = useMemo(() => {
+  const filterOptions = useMemo<RoomOption[]>(() => {
     return [
       { id: 'all', name: 'All rooms' },
       { id: 'unassigned', name: 'Unassigned' },
@@ -75,40 +79,36 @@ function App() {
       return row.roomId === selectedRoom
     })
 
-    const getSortableName = (row, field) => (row[field] || '').toString().toLowerCase()
-    rows.sort((a, b) => getSortableName(a, sortBy).localeCompare(getSortableName(b, sortBy)))
+    const getSortableValue = (row: HueInventoryRow, field: SortField): string => {
+      const value = row[field]
+      return value ? String(value).toLowerCase() : ''
+    }
+
+    rows.sort((a, b) => getSortableValue(a, sortBy).localeCompare(getSortableValue(b, sortBy)))
     return rows
   }, [lightRows, selectedRoom, sortBy])
 
-  const handleRenameRoom = (event) => {
+  const handleRenameRoom = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault()
     setSaveMessage('')
+
     if (!roomToRename || !newRoomName.trim()) {
       setSaveMessage('Pick a room and enter a new name.')
       return
     }
 
     setSaving(true)
-    fetch(`${apiBaseUrl}/api/hue/rooms/${roomToRename}/name`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newRoomName.trim() }),
-    })
-      .then(async (response) => {
-        const payload = await response.json()
-        if (!response.ok) {
-          throw new Error(payload.error || `HTTP ${response.status}`)
-        }
-        setSaveMessage('Room name updated.')
-        setNewRoomName('')
-        return loadData()
-      })
-      .catch((saveError) => {
-        setSaveMessage(`Update failed: ${saveError.message}`)
-      })
-      .finally(() => {
-        setSaving(false)
-      })
+    try {
+      await renameHueRoom(roomToRename, { name: newRoomName.trim() })
+      setSaveMessage('Room name updated.')
+      setNewRoomName('')
+      await loadData()
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : 'Unknown error'
+      setSaveMessage(`Update failed: ${message}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -132,15 +132,19 @@ function App() {
             </label>
             <label>
               Sort
-              <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
-                <option value="lightName">Light name</option>
-                <option value="deviceName">Device name</option>
-                <option value="roomName">Room name</option>
-                <option value="zigbeeStatus">Zigbee status</option>
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value as SortField)}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
           </section>
-          <form className="renameRoom" onSubmit={handleRenameRoom}>
+          <form className="renameRoom" onSubmit={(event) => void handleRenameRoom(event)}>
             <label>
               Edit Room Name
               <select value={roomToRename} onChange={(event) => setRoomToRename(event.target.value)}>
@@ -197,7 +201,7 @@ function App() {
                   ))}
                   {filteredRows.length === 0 && (
                     <tr>
-                      <td colSpan="5">No lights match the selected room.</td>
+                      <td colSpan={5}>No lights match the selected room.</td>
                     </tr>
                   )}
                 </tbody>
