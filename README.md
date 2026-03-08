@@ -120,3 +120,7 @@ After setting `hue.api-key` in `backend/application-secrets.properties` and star
 ```bash
 curl http://localhost:8080/api/hue/ping
 ```
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](./LICENSE).
