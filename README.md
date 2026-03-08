@@ -1,70 +1,85 @@
-# Getting Started with Create React App
+# React + Spring Boot Starter
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This repository contains a split frontend/backend setup:
 
-## Available Scripts
+- `frontend/`: React app built with Vite
+- `backend/`: Spring Boot REST API (Maven), including Hue Bridge proxy endpoints
 
-In the project directory, you can run:
+## Prerequisites
 
-### `npm start`
+- Node.js 20+
+- Java 21+
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## Hue Bridge configuration
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Configure Hue in a Spring Boot external config file:
 
-### `npm test`
+```bash
+cd backend
+cat > application-secrets.properties <<'EOF'
+hue.base-url=https://192.168.1.151
+hue.api-key=<your-hue-application-key>
+hue.allow-self-signed-cert=true
+EOF
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+This file is gitignored.
 
-### `npm run build`
+`hue.allow-self-signed-cert=true` is useful for local Hue Bridge TLS certificates. Set it to `false` if you later import the bridge certificate into your Java truststore.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+You can still use environment variables if needed:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```bash
+export HUE_BASE_URL=https://192.168.1.151
+export HUE_API_KEY=<your-hue-application-key>
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Backend endpoints used by the frontend:
 
-### `npm run eject`
+- `GET /api/hue/devices`
+- `GET /api/hue/rooms`
+- `GET /api/hue/lights`
+- `GET /api/hue/inventory` (merged device + light + zigbee view for troubleshooting)
+- `PUT /api/hue/rooms/{roomId}/name` with JSON body `{ "name": "New Room Name" }`
+- `GET /api/hue/ping`
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+## Run the backend
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```bash
+cd backend
+./mvnw spring-boot:run
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+Backend runs on `http://localhost:8080`.
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+## Run the frontend
 
-## Learn More
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Frontend runs on `http://localhost:5173` and calls the backend endpoint.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Optional frontend API base URL
 
-### Code Splitting
+By default, frontend uses `http://localhost:8080`.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+To override, set:
 
-### Analyzing the Bundle Size
+```bash
+VITE_API_BASE_URL=http://localhost:8080
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Security note
 
-### Making a Progressive Web App
+Keep `HUE_API_KEY` server-side only. Do not put Hue API keys in frontend environment variables or client code.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## Verify Hue connectivity
 
-### Advanced Configuration
+After setting `hue.api-key` in `backend/application-secrets.properties` and starting backend:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+```bash
+curl http://localhost:8080/api/hue/ping
+```
